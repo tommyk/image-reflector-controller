@@ -63,6 +63,8 @@ const (
 	CACert     = "caFile"
 )
 
+var chokeTransport *chokeRequestTransport = &chokeRequestTransport{}
+
 // ImageRepositoryReconciler reconciles a ImageRepository object
 type ImageRepositoryReconciler struct {
 	client.Client
@@ -241,6 +243,9 @@ func (r *ImageRepositoryReconciler) scan(ctx context.Context, imageRepo *imagev1
 		options = append(options, remote.WithTransport(tr))
 	}
 
+	// hook up a choke point for making only a certain amount of requests
+	options = append(options, remote.WithTransport(chokeTransport))
+
 	tags, err := remote.ListWithContext(ctx, ref.Context(), options...)
 	if err != nil {
 		imagev1.SetImageRepositoryReadiness(
@@ -278,6 +283,14 @@ func (r *ImageRepositoryReconciler) scan(ctx context.Context, imageRepo *imagev1
 	)
 
 	return nil
+}
+
+type chokeRequestTransport struct {
+}
+
+func (c *chokeRequestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	time.Sleep(5 * time.Second)
+	return http.DefaultTransport.RoundTrip(req)
 }
 
 func transportFromSecret(certSecret *corev1.Secret) (*http.Transport, error) {
